@@ -26,7 +26,7 @@ use crate::style;
 use crate::style::Style;
 use crate::tests::TESTING;
 use crate::utils::bat::output::PagingMode;
-use crate::utils::cwd::cwd_of_user_shell_process;
+use crate::utils::path::cwd_of_user_shell_process;
 use crate::utils::regex_replacement::RegexReplacement;
 use crate::utils::syntect::FromDeltaStyle;
 use crate::wrapping::WrapConfig;
@@ -245,8 +245,13 @@ impl From<cli::Opt> for Config {
 
         let wrap_max_lines_plus1 = adapt_wrap_max_lines_argument(opt.wrap_max_lines);
 
+        #[cfg(test)]
+        let cwd_of_delta_process = Some(PathBuf::from("/fake/delta/cwd"));
+        #[cfg(not(test))]
         let cwd_of_delta_process = std::env::current_dir().ok();
+
         let cwd_relative_to_repo_root = std::env::var("GIT_PREFIX").ok();
+
         let cwd_of_user_shell_process = cwd_of_user_shell_process(
             cwd_of_delta_process.as_ref(),
             cwd_relative_to_repo_root.as_deref(),

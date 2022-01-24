@@ -20,6 +20,17 @@ pub enum CallingProcess {
 }
 // TODO: Git blame is currently handled differently
 
+impl CallingProcess {
+    pub fn is_git_diff_relative(&self) -> bool {
+        match self {
+            CallingProcess::GitDiff(cmd) if cmd.long_options.contains("--relative") => true,
+            CallingProcess::GitShow(cmd, _) if cmd.long_options.contains("--relative") => true,
+            CallingProcess::GitLog(cmd) if cmd.long_options.contains("--relative") => true,
+            _ => false,
+        }
+    }
+}
+
 #[derive(Clone, Debug, PartialEq)]
 pub struct CommandLine {
     pub long_options: HashSet<String>,

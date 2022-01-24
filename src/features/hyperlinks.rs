@@ -1,4 +1,5 @@
 use std::borrow::Cow;
+use std::path::Path;
 use std::str::FromStr;
 
 use lazy_static::lazy_static;
@@ -7,6 +8,7 @@ use regex::{Captures, Regex};
 use crate::config::Config;
 use crate::features::OptionValueFunction;
 use crate::git_config::{GitConfig, GitConfigEntry, GitRemoteRepo};
+
 pub fn make_feature() -> Vec<(String, OptionValueFunction)> {
     builtin_feature!([
         (
@@ -52,27 +54,27 @@ fn get_remote_url(git_config: &GitConfig) -> Option<GitConfigEntry> {
         })
 }
 
-/// Create a file hyperlink to `path`, displaying `text`.
-pub fn format_osc8_file_hyperlink<'a>(
-    relative_path: &'a str,
+/// Create a file hyperlink, displaying `text`.
+pub fn format_osc8_file_hyperlink<'a, P>(
+    absolute_path: P,
     line_number: Option<usize>,
     text: &str,
     config: &Config,
-) -> Cow<'a, str> {
-    if let Some(cwd) = &config.cwd_of_user_shell_process {
-        let absolute_path = cwd.join(relative_path);
-        let mut url = config
-            .hyperlinks_file_link_format
-            .replace("{path}", &absolute_path.to_string_lossy());
-        if let Some(n) = line_number {
-            url = url.replace("{line}", &format!("{}", n))
-        } else {
-            url = url.replace("{line}", "")
-        };
-        Cow::from(format_osc8_hyperlink(&url, text))
+) -> Cow<'a, str>
+where
+    P: AsRef<Path>,
+    P: std::fmt::Debug,
+{
+    debug_assert!(absolute_path.as_ref().is_absolute());
+    let mut url = config
+        .hyperlinks_file_link_format
+        .replace("{path}", &absolute_path.as_ref().to_string_lossy());
+    if let Some(n) = line_number {
+        url = url.replace("{line}", &format!("{}", n))
     } else {
-        Cow::from(relative_path)
-    }
+        url = url.replace("{line}", "")
+    };
+    Cow::from(format_osc8_hyperlink(&url, text))
 }
 
 fn format_osc8_hyperlink(url: &str, text: &str) -> String {
@@ -114,51 +116,175 @@ pub mod tests {
     use std::path::PathBuf;
 
     use super::*;
-    use crate::tests::integration_test_utils;
+    use crate::{
+        tests::integration_test_utils::{self, DeltaTest},
+        utils,
+    };
 
-    fn assert_file_hyperlink_matches(
-        relative_path: &str,
-        expected_hyperlink_path: &str,
-        config: &Config,
-    ) {
-        let link_text = "link text";
-        assert_eq!(
-            format_osc8_hyperlink(
-                &PathBuf::from(expected_hyperlink_path).to_string_lossy(),
-                link_text
-            ),
-            format_osc8_file_hyperlink(relative_path, None, link_text, config)
-        )
+    struct FilePathsTestCase<'a> {
+        repo_root: &'a PathBuf,
+
+        // True location of file in repo
+        file_path_relative_to_repo_root: &'a str,
+
+        // Git spawns delta from repo root so this is only <=> delta's cwd if user invoked git in
+        // repo root
+        cwd_relative_to_repo_root: &'a str,
+
+        delta_relative_paths: bool,
+        git_diff_relative: bool,
+        expected_displayed_path: &'a str,
+        #[allow(dead_code)]
+        name: &'a str,
+    }
+
+    impl<'a> FilePathsTestCase<'a> {
+        pub fn get_args(&self) -> Vec<String> {
+            let mut args = vec![
+                "--navigate".to_string(), // helps locate the file path in the output
+                "--hyperlinks".to_string(),
+                "--hyperlinks-file-link-format".to_string(),
+                "{path}".to_string(),
+            ];
+            if self.delta_relative_paths {
+                args.push("--relative-paths".to_string());
+            }
+            args
+        }
+
+        pub fn path_in_git_output(&self) -> String {
+            match self.git_diff_relative {
+                false => self.file_path_relative_to_repo_root.to_string(),
+                true => {
+                    assert!(self
+                        .file_path_relative_to_repo_root
+                        .starts_with(self.cwd_relative_to_repo_root));
+                    pathdiff::diff_paths(
+                        self.file_path_relative_to_repo_root,
+                        self.cwd_relative_to_repo_root,
+                    )
+                    .unwrap()
+                    .to_string_lossy()
+                    .to_string()
+                }
+            }
+        }
+
+        pub fn expected_hyperlink_path(&self) -> PathBuf {
+            self.repo_root.join(self.file_path_relative_to_repo_root)
+        }
     }
 
     #[test]
-    #[cfg(not(target_os = "windows"))]
-    fn test_relative_path_file_hyperlink_when_not_child_process_of_git() {
-        // The current process is not a child process of git.
-        // Delta receives a file path 'a'.
-        // The hyperlink should be $cwd/a.
-        let mut config = integration_test_utils::make_config_from_args(&[
-            "--hyperlinks",
-            "--hyperlinks-file-link-format",
-            "{path}",
-        ]);
-        config.cwd_of_user_shell_process = Some(PathBuf::from("/some/cwd"));
-        assert_file_hyperlink_matches("a", "/some/cwd/a", &config)
+    fn test_paths_and_hyperlinks_user_in_repo_root_dir() {
+        // Expectations are uninfluenced by git's --relative and delta's relative_paths options.
+        let repo_root = PathBuf::from("/repo/root");
+        let file_path_relative_to_repo_root = "a";
+        let cwd_relative_to_repo_root = "";
+
+        for (delta_relative_paths, git_diff_relative) in
+            vec![(false, false), (false, true), (true, false), (true, true)]
+        {
+            run_test(FilePathsTestCase {
+                name: &format!(
+                    "delta relative_paths={} git diff --relative={}",
+                    delta_relative_paths, git_diff_relative
+                ),
+                repo_root: &repo_root,
+                file_path_relative_to_repo_root,
+                cwd_relative_to_repo_root,
+                delta_relative_paths,
+                git_diff_relative,
+                expected_displayed_path: "a",
+            })
+        }
     }
 
     #[test]
-    #[cfg(not(target_os = "windows"))]
-    fn test_relative_path_file_hyperlink_when_child_process_of_git() {
-        // The current process is a child process of git.
-        // Delta receives a file path 'a'.
-        // We are in directory b/ relative to the repo root.
-        // The hyperlink should be $repo_root/b/a.
-        let mut config = integration_test_utils::make_config_from_args(&[
-            "--hyperlinks",
-            "--hyperlinks-file-link-format",
-            "{path}",
-        ]);
-        config.cwd_of_user_shell_process = Some(PathBuf::from("/some/repo-root/b"));
-        assert_file_hyperlink_matches("a", "/some/repo-root/b/a", &config)
+    fn test_paths_and_hyperlinks_user_in_subdir_file_in_same_subdir() {
+        let repo_root = PathBuf::from("/repo/root");
+        let file_path_relative_to_repo_root = "b/a";
+        let cwd_relative_to_repo_root = "b";
+
+        run_test(FilePathsTestCase {
+            name: "b/a from b",
+            repo_root: &repo_root,
+            file_path_relative_to_repo_root,
+            cwd_relative_to_repo_root,
+            delta_relative_paths: false,
+            git_diff_relative: false,
+            expected_displayed_path: "b/a",
+        });
+        run_test(FilePathsTestCase {
+            name: "b/a from b",
+            repo_root: &repo_root,
+            file_path_relative_to_repo_root,
+            cwd_relative_to_repo_root,
+            delta_relative_paths: false,
+            git_diff_relative: true,
+            // delta saw a and wasn't configured to make any changes
+            expected_displayed_path: "a",
+        });
+        run_test(FilePathsTestCase {
+            name: "b/a from b",
+            repo_root: &repo_root,
+            file_path_relative_to_repo_root,
+            cwd_relative_to_repo_root,
+            delta_relative_paths: true,
+            git_diff_relative: false,
+            // delta saw b/a and changed it to a
+            expected_displayed_path: "a",
+        });
+        run_test(FilePathsTestCase {
+            name: "b/a from b",
+            repo_root: &repo_root,
+            file_path_relative_to_repo_root,
+            cwd_relative_to_repo_root,
+            delta_relative_paths: true,
+            git_diff_relative: true,
+            // delta saw a and didn't change it
+            expected_displayed_path: "a",
+        });
+    }
+
+    const GIT_OUTPUT: &str = r#"
+diff --git a/__path__ b/__path__
+index 587be6b..975fbec 100644
+--- a/__path__
++++ b/__path__
+@@ -1 +1 @@
+-x
++y
+"#;
+
+    fn run_test(test_case: FilePathsTestCase) {
+        let mut config = integration_test_utils::make_config_from_args(
+            &test_case
+                .get_args()
+                .iter()
+                .map(|s| s.as_str())
+                .collect::<Vec<&str>>()
+                .as_slice(),
+        );
+        // The test is simulating delta invoked by git hence these are the same
+        config.cwd_of_delta_process = Some(test_case.repo_root.to_path_buf());
+        config.cwd_relative_to_repo_root = Some(test_case.cwd_relative_to_repo_root.to_string());
+        config.cwd_of_user_shell_process = utils::path::cwd_of_user_shell_process(
+            config.cwd_of_delta_process.as_ref(),
+            config.cwd_relative_to_repo_root.as_deref(),
+        );
+        let mut delta_test = DeltaTest::with_config(&config);
+        if test_case.git_diff_relative {
+            delta_test = delta_test.with_calling_process("git diff --relative")
+        }
+        delta_test
+            .with_input(&GIT_OUTPUT.replace("__path__", &test_case.path_in_git_output()))
+            .expect_raw_contains(&format!(
+                "Δ {}",
+                format_osc8_hyperlink(
+                    &PathBuf::from(test_case.expected_hyperlink_path()).to_string_lossy(),
+                    test_case.expected_displayed_path
+                ),
+            ));
     }
 }
