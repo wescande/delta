@@ -111,6 +111,7 @@ fn format_github_commit_url(commit: &str, github_repo: &str) -> String {
     format!("https://github.com/{}/commit/{}", github_repo, commit)
 }
 
+#[cfg(not(target_os = "windows"))]
 #[cfg(test)]
 pub mod tests {
     use std::iter::FromIterator;
