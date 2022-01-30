@@ -60,3 +60,15 @@ pub fn cwd_of_user_shell_process(
         }
     }
 }
+
+#[cfg(test)]
+pub fn fake_delta_cwd_for_tests() -> PathBuf {
+    #[cfg(not(target_os = "windows"))]
+    {
+        PathBuf::from("/fake/delta/cwd")
+    }
+    #[cfg(target_os = "windows")]
+    {
+        PathBuf::from(r"C:\fake\delta\cwd")
+    }
+}

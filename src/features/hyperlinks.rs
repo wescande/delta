@@ -113,6 +113,7 @@ fn format_github_commit_url(commit: &str, github_repo: &str) -> String {
 
 #[cfg(test)]
 pub mod tests {
+    use std::iter::FromIterator;
     use std::path::PathBuf;
 
     use super::*;
@@ -122,10 +123,8 @@ pub mod tests {
     };
 
     struct FilePathsTestCase<'a> {
-        repo_root: &'a PathBuf,
-
         // True location of file in repo
-        file_path_relative_to_repo_root: &'a str,
+        file_path_relative_to_repo_root: &'a Path,
 
         // Git spawns delta from repo root so this is only <=> delta's cwd if user invoked git in
         // repo root
@@ -154,7 +153,10 @@ pub mod tests {
 
         pub fn path_in_git_output(&self) -> String {
             match self.git_diff_relative {
-                false => self.file_path_relative_to_repo_root.to_string(),
+                false => self
+                    .file_path_relative_to_repo_root
+                    .to_string_lossy()
+                    .to_string(),
                 true => {
                     assert!(self
                         .file_path_relative_to_repo_root
@@ -171,15 +173,14 @@ pub mod tests {
         }
 
         pub fn expected_hyperlink_path(&self) -> PathBuf {
-            self.repo_root.join(self.file_path_relative_to_repo_root)
+            utils::path::fake_delta_cwd_for_tests().join(self.file_path_relative_to_repo_root)
         }
     }
 
     #[test]
     fn test_paths_and_hyperlinks_user_in_repo_root_dir() {
         // Expectations are uninfluenced by git's --relative and delta's relative_paths options.
-        let repo_root = PathBuf::from("/repo/root");
-        let file_path_relative_to_repo_root = "a";
+        let file_path_relative_to_repo_root = PathBuf::from("a");
         let cwd_relative_to_repo_root = "";
 
         for (delta_relative_paths, git_diff_relative) in
@@ -190,8 +191,7 @@ pub mod tests {
                     "delta relative_paths={} git diff --relative={}",
                     delta_relative_paths, git_diff_relative
                 ),
-                repo_root: &repo_root,
-                file_path_relative_to_repo_root,
+                file_path_relative_to_repo_root: file_path_relative_to_repo_root.as_path(),
                 cwd_relative_to_repo_root,
                 delta_relative_paths,
                 git_diff_relative,
@@ -202,14 +202,12 @@ pub mod tests {
 
     #[test]
     fn test_paths_and_hyperlinks_user_in_subdir_file_in_same_subdir() {
-        let repo_root = PathBuf::from("/repo/root");
-        let file_path_relative_to_repo_root = "b/a";
+        let file_path_relative_to_repo_root = PathBuf::from_iter(&["b", "a"]);
         let cwd_relative_to_repo_root = "b";
 
         run_test(FilePathsTestCase {
             name: "b/a from b",
-            repo_root: &repo_root,
-            file_path_relative_to_repo_root,
+            file_path_relative_to_repo_root: file_path_relative_to_repo_root.as_path(),
             cwd_relative_to_repo_root,
             delta_relative_paths: false,
             git_diff_relative: false,
@@ -217,8 +215,7 @@ pub mod tests {
         });
         run_test(FilePathsTestCase {
             name: "b/a from b",
-            repo_root: &repo_root,
-            file_path_relative_to_repo_root,
+            file_path_relative_to_repo_root: file_path_relative_to_repo_root.as_path(),
             cwd_relative_to_repo_root,
             delta_relative_paths: false,
             git_diff_relative: true,
@@ -227,8 +224,7 @@ pub mod tests {
         });
         run_test(FilePathsTestCase {
             name: "b/a from b",
-            repo_root: &repo_root,
-            file_path_relative_to_repo_root,
+            file_path_relative_to_repo_root: file_path_relative_to_repo_root.as_path(),
             cwd_relative_to_repo_root,
             delta_relative_paths: true,
             git_diff_relative: false,
@@ -237,13 +233,27 @@ pub mod tests {
         });
         run_test(FilePathsTestCase {
             name: "b/a from b",
-            repo_root: &repo_root,
-            file_path_relative_to_repo_root,
+            file_path_relative_to_repo_root: file_path_relative_to_repo_root.as_path(),
             cwd_relative_to_repo_root,
             delta_relative_paths: true,
             git_diff_relative: true,
             // delta saw a and didn't change it
             expected_displayed_path: "a",
+        });
+    }
+
+    #[test]
+    fn test_paths_and_hyperlinks_user_in_subdir_file_in_different_subdir() {
+        let file_path_relative_to_repo_root = PathBuf::from_iter(&["b", "a"]);
+        let cwd_relative_to_repo_root = "c";
+
+        run_test(FilePathsTestCase {
+            name: "b/a from b",
+            file_path_relative_to_repo_root: file_path_relative_to_repo_root.as_path(),
+            cwd_relative_to_repo_root,
+            delta_relative_paths: false,
+            git_diff_relative: false,
+            expected_displayed_path: "b/a",
         });
     }
 
@@ -267,7 +277,6 @@ index 587be6b..975fbec 100644
                 .as_slice(),
         );
         // The test is simulating delta invoked by git hence these are the same
-        config.cwd_of_delta_process = Some(test_case.repo_root.to_path_buf());
         config.cwd_relative_to_repo_root = Some(test_case.cwd_relative_to_repo_root.to_string());
         config.cwd_of_user_shell_process = utils::path::cwd_of_user_shell_process(
             config.cwd_of_delta_process.as_ref(),
