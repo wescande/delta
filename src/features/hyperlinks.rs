@@ -127,8 +127,8 @@ pub mod tests {
     fn test_paths_and_hyperlinks_user_in_repo_root_dir() {
         // Expectations are uninfluenced by git's --relative and delta's relative_paths options.
         let input_type = InputType::GitDiff;
-        let file_path_relative_to_repo_root = PathBuf::from("a");
-        let cwd_relative_to_repo_root = "";
+        let true_location_of_file_relative_to_repo_root = PathBuf::from("a");
+        let git_prefix_env_var = Some("");
 
         for (delta_relative_paths, calling_cmd) in vec![
             (false, Some("git diff")),
@@ -141,8 +141,9 @@ pub mod tests {
                     "delta relative_paths={} calling_cmd={:?}",
                     delta_relative_paths, calling_cmd
                 ),
-                file_path_relative_to_repo_root: file_path_relative_to_repo_root.as_path(),
-                cwd_relative_to_repo_root,
+                true_location_of_file_relative_to_repo_root:
+                    true_location_of_file_relative_to_repo_root.as_path(),
+                git_prefix_env_var,
                 delta_relative_paths,
                 input_type,
                 calling_cmd,
@@ -154,13 +155,14 @@ pub mod tests {
     #[test]
     fn test_paths_and_hyperlinks_user_in_subdir_file_in_same_subdir() {
         let input_type = InputType::GitDiff;
-        let file_path_relative_to_repo_root = PathBuf::from_iter(&["b", "a"]);
-        let cwd_relative_to_repo_root = "b";
+        let true_location_of_file_relative_to_repo_root = PathBuf::from_iter(&["b", "a"]);
+        let git_prefix_env_var = Some("b");
 
         run_test(FilePathsTestCase {
             name: "b/a from b",
-            file_path_relative_to_repo_root: file_path_relative_to_repo_root.as_path(),
-            cwd_relative_to_repo_root,
+            true_location_of_file_relative_to_repo_root:
+                true_location_of_file_relative_to_repo_root.as_path(),
+            git_prefix_env_var,
             delta_relative_paths: false,
             input_type,
             calling_cmd: Some("git diff"),
@@ -168,8 +170,9 @@ pub mod tests {
         });
         run_test(FilePathsTestCase {
             name: "b/a from b",
-            file_path_relative_to_repo_root: file_path_relative_to_repo_root.as_path(),
-            cwd_relative_to_repo_root,
+            true_location_of_file_relative_to_repo_root:
+                true_location_of_file_relative_to_repo_root.as_path(),
+            git_prefix_env_var,
             delta_relative_paths: false,
             input_type,
             calling_cmd: Some("git diff --relative"),
@@ -178,8 +181,9 @@ pub mod tests {
         });
         run_test(FilePathsTestCase {
             name: "b/a from b",
-            file_path_relative_to_repo_root: file_path_relative_to_repo_root.as_path(),
-            cwd_relative_to_repo_root,
+            true_location_of_file_relative_to_repo_root:
+                true_location_of_file_relative_to_repo_root.as_path(),
+            git_prefix_env_var,
             delta_relative_paths: true,
             input_type,
             calling_cmd: Some("git diff"),
@@ -188,8 +192,9 @@ pub mod tests {
         });
         run_test(FilePathsTestCase {
             name: "b/a from b",
-            file_path_relative_to_repo_root: file_path_relative_to_repo_root.as_path(),
-            cwd_relative_to_repo_root,
+            true_location_of_file_relative_to_repo_root:
+                true_location_of_file_relative_to_repo_root.as_path(),
+            git_prefix_env_var,
             delta_relative_paths: true,
             input_type,
             calling_cmd: Some("git diff --relative"),
@@ -201,13 +206,14 @@ pub mod tests {
     #[test]
     fn test_paths_and_hyperlinks_user_in_subdir_file_in_different_subdir() {
         let input_type = InputType::GitDiff;
-        let file_path_relative_to_repo_root = PathBuf::from_iter(&["b", "a"]);
-        let cwd_relative_to_repo_root = "c";
+        let true_location_of_file_relative_to_repo_root = PathBuf::from_iter(&["b", "a"]);
+        let git_prefix_env_var = Some("c");
 
         run_test(FilePathsTestCase {
             name: "b/a from b",
-            file_path_relative_to_repo_root: file_path_relative_to_repo_root.as_path(),
-            cwd_relative_to_repo_root,
+            true_location_of_file_relative_to_repo_root:
+                true_location_of_file_relative_to_repo_root.as_path(),
+            git_prefix_env_var,
             delta_relative_paths: false,
             input_type,
             calling_cmd: Some("git diff"),
@@ -218,19 +224,19 @@ pub mod tests {
     #[test]
     fn test_paths_and_hyperlinks_git_grep() {
         let input_type = InputType::GitGrep;
-        let file_path_relative_to_repo_root = PathBuf::from_iter(&["a", "b.txt"]);
-        let cwd_relative_to_repo_root = "";
+        let true_location_of_file_relative_to_repo_root = PathBuf::from_iter(&["a", "b.txt"]);
         let delta_relative_paths = false; // TODO: N/A
 
         run_test(FilePathsTestCase {
             name: "git grep: a/b.txt from root dir",
-            file_path_relative_to_repo_root: file_path_relative_to_repo_root.as_path(),
-            cwd_relative_to_repo_root,
+            true_location_of_file_relative_to_repo_root:
+                true_location_of_file_relative_to_repo_root.as_path(),
+            git_prefix_env_var: Some(""),
             delta_relative_paths,
             input_type,
             calling_cmd: Some("git grep foo"),
             expected_displayed_path: "a/b.txt:",
-        })
+        });
     }
 
     const GIT_DIFF_OUTPUT: &str = r#"
@@ -249,11 +255,11 @@ __path__:  some matching line
 
     struct FilePathsTestCase<'a> {
         // True location of file in repo
-        file_path_relative_to_repo_root: &'a Path,
+        true_location_of_file_relative_to_repo_root: &'a Path,
 
         // Git spawns delta from repo root so this is only <=> delta's cwd if user invoked git in
         // repo root
-        cwd_relative_to_repo_root: &'a str,
+        git_prefix_env_var: Option<&'a str>,
 
         delta_relative_paths: bool,
         input_type: InputType,
@@ -314,16 +320,16 @@ __path__:  some matching line
         pub fn path_in_git_output(&self) -> String {
             match self.calling_process() {
                 CallingProcess::GitDiff(false) => self
-                    .file_path_relative_to_repo_root
+                    .true_location_of_file_relative_to_repo_root
                     .to_string_lossy()
                     .to_string(),
                 CallingProcess::GitDiff(true) => {
                     assert!(self
-                        .file_path_relative_to_repo_root
-                        .starts_with(self.cwd_relative_to_repo_root));
+                        .true_location_of_file_relative_to_repo_root
+                        .starts_with(self.git_prefix_env_var.unwrap()));
                     pathdiff::diff_paths(
-                        self.file_path_relative_to_repo_root,
-                        self.cwd_relative_to_repo_root,
+                        self.true_location_of_file_relative_to_repo_root,
+                        self.git_prefix_env_var.unwrap(),
                     )
                     .unwrap()
                     .to_string_lossy()
@@ -334,13 +340,14 @@ __path__:  some matching line
         }
 
         pub fn path_in_grep_output(&self) -> String {
-            self.file_path_relative_to_repo_root
+            self.true_location_of_file_relative_to_repo_root
                 .to_string_lossy()
                 .to_string()
         }
 
         pub fn expected_hyperlink_path(&self) -> PathBuf {
-            utils::path::fake_delta_cwd_for_tests().join(self.file_path_relative_to_repo_root)
+            utils::path::fake_delta_cwd_for_tests()
+                .join(self.true_location_of_file_relative_to_repo_root)
         }
     }
 
@@ -354,7 +361,7 @@ __path__:  some matching line
                 .as_slice(),
         );
         // The test is simulating delta invoked by git hence these are the same
-        config.cwd_relative_to_repo_root = Some(test_case.cwd_relative_to_repo_root.to_string());
+        config.cwd_relative_to_repo_root = test_case.git_prefix_env_var.map(|s| s.to_string());
         config.cwd_of_user_shell_process = utils::path::cwd_of_user_shell_process(
             config.cwd_of_delta_process.as_ref(),
             config.cwd_relative_to_repo_root.as_deref(),
