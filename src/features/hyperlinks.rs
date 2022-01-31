@@ -215,6 +215,24 @@ pub mod tests {
         });
     }
 
+    #[test]
+    fn test_paths_and_hyperlinks_git_grep() {
+        let input_type = InputType::GitGrep;
+        let file_path_relative_to_repo_root = PathBuf::from_iter(&["a", "b.txt"]);
+        let cwd_relative_to_repo_root = "";
+        let delta_relative_paths = false; // TODO: N/A
+
+        run_test(FilePathsTestCase {
+            name: "git grep: a/b.txt from root dir",
+            file_path_relative_to_repo_root: file_path_relative_to_repo_root.as_path(),
+            cwd_relative_to_repo_root,
+            delta_relative_paths,
+            input_type,
+            calling_cmd: Some("git grep foo"),
+            expected_displayed_path: "a/b.txt:",
+        })
+    }
+
     const GIT_DIFF_OUTPUT: &str = r#"
 diff --git a/__path__ b/__path__
 index 587be6b..975fbec 100644
@@ -225,9 +243,9 @@ index 587be6b..975fbec 100644
 +y
     "#;
 
-    const GIT_GREP_OUTPUT: &str = r#"
+    const GIT_GREP_OUTPUT: &str = "\
 __path__:  some matching line
-        "#;
+";
 
     struct FilePathsTestCase<'a> {
         // True location of file in repo
@@ -264,6 +282,10 @@ __path__:  some matching line
                 "--hyperlinks".to_string(),
                 "--hyperlinks-file-link-format".to_string(),
                 "{path}".to_string(),
+                "--grep-file-style".to_string(),
+                "raw".to_string(),
+                "--grep-line-number-style".to_string(),
+                "raw".to_string(),
             ];
             if self.delta_relative_paths {
                 args.push("--relative-paths".to_string());
