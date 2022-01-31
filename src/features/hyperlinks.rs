@@ -250,7 +250,7 @@ pub mod tests {
     }
 
     #[test]
-    fn test_paths_and_hyperlinks_git_grep() {
+    fn test_paths_and_hyperlinks_git_grep_user_in_root() {
         let input_type = InputType::Grep;
         let true_location_of_file_relative_to_repo_root = PathBuf::from_iter(&["b", "a.txt"]);
 
@@ -265,17 +265,32 @@ pub mod tests {
             path_in_delta_input: "b/a.txt",
             expected_displayed_path: "b/a.txt:",
         });
+    }
+
+    #[test]
+    fn test_paths_and_hyperlinks_grep_user_in_subdir_file_in_same_subdir_git_grep() {
+        _run_test_grep_user_in_subdir_file_in_same_subdir(Some("git grep foo"))
+    }
+
+    #[test]
+    fn test_paths_and_hyperlinks_grep_user_in_subdir_file_in_same_subdir_unknown_process() {
+        _run_test_grep_user_in_subdir_file_in_same_subdir(None)
+    }
+
+    fn _run_test_grep_user_in_subdir_file_in_same_subdir(calling_cmd: Option<&str>) {
+        let input_type = InputType::Grep;
+        let true_location_of_file_relative_to_repo_root = PathBuf::from_iter(&["b", "a.txt"]);
         run_test(FilePathsTestCase {
             name: "git grep: b/a.txt from b/ dir",
             input_type,
-            calling_cmd: Some("git grep foo"),
+            calling_cmd,
             delta_relative_paths_option: false,
             true_location_of_file_relative_to_repo_root:
                 true_location_of_file_relative_to_repo_root.as_path(),
             git_prefix_env_var: Some("b/"),
             path_in_delta_input: "a.txt",
             expected_displayed_path: "a.txt:",
-        })
+        });
     }
 
     const GIT_DIFF_OUTPUT: &str = r#"
