@@ -21,7 +21,6 @@ pub fn absolute_path(relative_path: &str, config: &Config) -> Option<PathBuf> {
         }
         _ => None,
     }
-    .and_then(|p| std::fs::canonicalize(p).ok())
 }
 
 /// Relativize path if delta config demands that and paths are not already relativized by git.
