@@ -223,6 +223,7 @@ pub mod tests {
 
     #[test]
     fn test_paths_and_hyperlinks_git_grep() {
+        let calling_cmd = Some("git grep foo");
         let input_type = InputType::GitGrep;
         let true_location_of_file_relative_to_repo_root = PathBuf::from_iter(&["a", "b.txt"]);
         let delta_relative_paths = false; // TODO: N/A
@@ -234,7 +235,7 @@ pub mod tests {
             git_prefix_env_var: Some(""),
             delta_relative_paths,
             input_type,
-            calling_cmd: Some("git grep foo"),
+            calling_cmd,
             expected_displayed_path: "a/b.txt:",
         });
     }
@@ -333,16 +334,34 @@ __path__:  some matching line
                     )
                     .unwrap()
                     .to_string_lossy()
-                    .to_string()
+                    .into()
                 }
                 _ => panic!("Unexpected calling process: {:?}", self.calling_process()),
             }
         }
 
+        /// Return the relative path as it would appear in grep output, i.e. accounting for facts
+        /// such as that that the user may have invoked the grep command from a non-root directory
+        /// in the repo.
         pub fn path_in_grep_output(&self) -> String {
-            self.true_location_of_file_relative_to_repo_root
-                .to_string_lossy()
-                .to_string()
+            use CallingProcess::*;
+            match (self.calling_process(), self.git_prefix_env_var) {
+                (GitGrep, None) => self
+                    .true_location_of_file_relative_to_repo_root
+                    .to_string_lossy()
+                    .into(),
+                (GitGrep, Some(dir)) => {
+                    // Delta must have been invoked as core.pager since GIT_PREFIX env var is set.
+                    // Note that it is possible that `true_location_of_file_relative_to_repo_root`
+                    // is not under `git_prefix_env_var` since one can do things like `git grep foo
+                    // ..`
+                    pathdiff::diff_paths(self.true_location_of_file_relative_to_repo_root, dir)
+                        .unwrap()
+                        .to_string_lossy()
+                        .into()
+                }
+                _ => panic!("Not implemented"),
+            }
         }
 
         pub fn expected_hyperlink_path(&self) -> PathBuf {
