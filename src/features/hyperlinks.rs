@@ -132,10 +132,23 @@ pub mod tests {
         cwd_relative_to_repo_root: &'a str,
 
         delta_relative_paths: bool,
-        git_diff_relative: bool,
+        input_type: InputType,
+        calling_cmd: Option<&'a str>,
         expected_displayed_path: &'a str,
         #[allow(dead_code)]
         name: &'a str,
+    }
+
+    #[derive(Debug)]
+    enum CallingProcess {
+        GitDiff(bool),
+        GitGrep,
+    }
+
+    #[derive(Clone, Copy, Debug)]
+    enum InputType {
+        GitDiff,
+        GitGrep,
     }
 
     impl<'a> FilePathsTestCase<'a> {
@@ -152,13 +165,31 @@ pub mod tests {
             args
         }
 
+        pub fn calling_process(&self) -> CallingProcess {
+            match (&self.input_type, self.calling_cmd) {
+                (InputType::GitDiff, Some(s)) if s.starts_with("git diff --relative") => {
+                    CallingProcess::GitDiff(true)
+                }
+                (InputType::GitDiff, Some(s)) if s.starts_with("git diff") => {
+                    CallingProcess::GitDiff(false)
+                }
+                (InputType::GitGrep, Some(s)) if s.starts_with("git grep") => {
+                    CallingProcess::GitGrep
+                }
+                _ => panic!(
+                    "Unexpected calling spec: {:?} {:?}",
+                    self.input_type, self.calling_cmd
+                ),
+            }
+        }
+
         pub fn path_in_git_output(&self) -> String {
-            match self.git_diff_relative {
-                false => self
+            match self.calling_process() {
+                CallingProcess::GitDiff(false) => self
                     .file_path_relative_to_repo_root
                     .to_string_lossy()
                     .to_string(),
-                true => {
+                CallingProcess::GitDiff(true) => {
                     assert!(self
                         .file_path_relative_to_repo_root
                         .starts_with(self.cwd_relative_to_repo_root));
@@ -170,7 +201,14 @@ pub mod tests {
                     .to_string_lossy()
                     .to_string()
                 }
+                _ => panic!("Unexpected calling process: {:?}", self.calling_process()),
             }
+        }
+
+        pub fn path_in_grep_output(&self) -> String {
+            self.file_path_relative_to_repo_root
+                .to_string_lossy()
+                .to_string()
         }
 
         pub fn expected_hyperlink_path(&self) -> PathBuf {
@@ -181,21 +219,26 @@ pub mod tests {
     #[test]
     fn test_paths_and_hyperlinks_user_in_repo_root_dir() {
         // Expectations are uninfluenced by git's --relative and delta's relative_paths options.
+        let input_type = InputType::GitDiff;
         let file_path_relative_to_repo_root = PathBuf::from("a");
         let cwd_relative_to_repo_root = "";
 
-        for (delta_relative_paths, git_diff_relative) in
-            vec![(false, false), (false, true), (true, false), (true, true)]
-        {
+        for (delta_relative_paths, calling_cmd) in vec![
+            (false, Some("git diff")),
+            (false, Some("git diff --relative")),
+            (true, Some("git diff")),
+            (true, Some("git diff --relative")),
+        ] {
             run_test(FilePathsTestCase {
                 name: &format!(
-                    "delta relative_paths={} git diff --relative={}",
-                    delta_relative_paths, git_diff_relative
+                    "delta relative_paths={} calling_cmd={:?}",
+                    delta_relative_paths, calling_cmd
                 ),
                 file_path_relative_to_repo_root: file_path_relative_to_repo_root.as_path(),
                 cwd_relative_to_repo_root,
                 delta_relative_paths,
-                git_diff_relative,
+                input_type,
+                calling_cmd,
                 expected_displayed_path: "a",
             })
         }
@@ -203,6 +246,7 @@ pub mod tests {
 
     #[test]
     fn test_paths_and_hyperlinks_user_in_subdir_file_in_same_subdir() {
+        let input_type = InputType::GitDiff;
         let file_path_relative_to_repo_root = PathBuf::from_iter(&["b", "a"]);
         let cwd_relative_to_repo_root = "b";
 
@@ -211,7 +255,8 @@ pub mod tests {
             file_path_relative_to_repo_root: file_path_relative_to_repo_root.as_path(),
             cwd_relative_to_repo_root,
             delta_relative_paths: false,
-            git_diff_relative: false,
+            input_type,
+            calling_cmd: Some("git diff"),
             expected_displayed_path: "b/a",
         });
         run_test(FilePathsTestCase {
@@ -219,7 +264,8 @@ pub mod tests {
             file_path_relative_to_repo_root: file_path_relative_to_repo_root.as_path(),
             cwd_relative_to_repo_root,
             delta_relative_paths: false,
-            git_diff_relative: true,
+            input_type,
+            calling_cmd: Some("git diff --relative"),
             // delta saw a and wasn't configured to make any changes
             expected_displayed_path: "a",
         });
@@ -228,7 +274,8 @@ pub mod tests {
             file_path_relative_to_repo_root: file_path_relative_to_repo_root.as_path(),
             cwd_relative_to_repo_root,
             delta_relative_paths: true,
-            git_diff_relative: false,
+            input_type,
+            calling_cmd: Some("git diff"),
             // delta saw b/a and changed it to a
             expected_displayed_path: "a",
         });
@@ -237,7 +284,8 @@ pub mod tests {
             file_path_relative_to_repo_root: file_path_relative_to_repo_root.as_path(),
             cwd_relative_to_repo_root,
             delta_relative_paths: true,
-            git_diff_relative: true,
+            input_type,
+            calling_cmd: Some("git diff --relative"),
             // delta saw a and didn't change it
             expected_displayed_path: "a",
         });
@@ -245,6 +293,7 @@ pub mod tests {
 
     #[test]
     fn test_paths_and_hyperlinks_user_in_subdir_file_in_different_subdir() {
+        let input_type = InputType::GitDiff;
         let file_path_relative_to_repo_root = PathBuf::from_iter(&["b", "a"]);
         let cwd_relative_to_repo_root = "c";
 
@@ -253,12 +302,13 @@ pub mod tests {
             file_path_relative_to_repo_root: file_path_relative_to_repo_root.as_path(),
             cwd_relative_to_repo_root,
             delta_relative_paths: false,
-            git_diff_relative: false,
+            input_type,
+            calling_cmd: Some("git diff"),
             expected_displayed_path: "b/a",
         });
     }
 
-    const GIT_OUTPUT: &str = r#"
+    const GIT_DIFF_OUTPUT: &str = r#"\
 diff --git a/__path__ b/__path__
 index 587be6b..975fbec 100644
 --- a/__path__
@@ -267,6 +317,10 @@ index 587be6b..975fbec 100644
 -x
 +y
 "#;
+
+    const GIT_GREP_OUTPUT: &str = r#"\
+__path__:  some matching line
+    "#;
 
     fn run_test(test_case: FilePathsTestCase) {
         let mut config = integration_test_utils::make_config_from_args(
@@ -284,17 +338,21 @@ index 587be6b..975fbec 100644
             config.cwd_relative_to_repo_root.as_deref(),
         );
         let mut delta_test = DeltaTest::with_config(&config);
-        if test_case.git_diff_relative {
-            delta_test = delta_test.with_calling_process("git diff --relative")
+        if let Some(cmd) = test_case.calling_cmd {
+            delta_test = delta_test.with_calling_process(cmd)
         }
-        delta_test
-            .with_input(&GIT_OUTPUT.replace("__path__", &test_case.path_in_git_output()))
-            .expect_raw_contains(&format!(
-                "Δ {}",
-                format_osc8_hyperlink(
-                    &PathBuf::from(test_case.expected_hyperlink_path()).to_string_lossy(),
-                    test_case.expected_displayed_path
-                ),
-            ));
+        let delta_test = match test_case.calling_process() {
+            CallingProcess::GitDiff(_) => delta_test
+                .with_input(&GIT_DIFF_OUTPUT.replace("__path__", &test_case.path_in_git_output())),
+            CallingProcess::GitGrep => delta_test
+                .with_input(&GIT_GREP_OUTPUT.replace("__path__", &test_case.path_in_grep_output())),
+        };
+        delta_test.expect_raw_contains(&format!(
+            "Δ {}",
+            format_osc8_hyperlink(
+                &PathBuf::from(test_case.expected_hyperlink_path()).to_string_lossy(),
+                test_case.expected_displayed_path
+            ),
+        ));
     }
 }
