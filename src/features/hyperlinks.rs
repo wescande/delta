@@ -251,7 +251,7 @@ pub mod tests {
 
     #[test]
     fn test_paths_and_hyperlinks_git_grep() {
-        let input_type = InputType::GitGrep;
+        let input_type = InputType::Grep;
         let true_location_of_file_relative_to_repo_root = PathBuf::from_iter(&["b", "a.txt"]);
 
         run_test(FilePathsTestCase {
@@ -317,7 +317,7 @@ __path__:  some matching line
     #[derive(Clone, Copy, Debug)]
     enum InputType {
         GitDiff,
-        GitGrep,
+        Grep,
     }
 
     impl<'a> FilePathsTestCase<'a> {
@@ -346,9 +346,8 @@ __path__:  some matching line
                 (InputType::GitDiff, Some(s)) if s.starts_with("git diff") => {
                     CallingProcess::GitDiff(false)
                 }
-                (InputType::GitGrep, Some(s)) if s.starts_with("git grep") => {
-                    CallingProcess::GitGrep
-                }
+                (InputType::Grep, Some(s)) if s.starts_with("git grep") => CallingProcess::GitGrep,
+                (InputType::Grep, None) => CallingProcess::GitGrep,
                 _ => panic!(
                     "Unexpected calling spec: {:?} {:?}",
                     self.input_type, self.calling_cmd
