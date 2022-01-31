@@ -8,7 +8,7 @@ pub fn absolute_path(relative_path: &str, config: &Config) -> Option<PathBuf> {
     match (
         &config.cwd_of_delta_process,
         &config.cwd_of_user_shell_process,
-        calling_process().is_git_diff_relative() || config.relative_paths,
+        calling_process().paths_in_input_are_relative_to_cwd() || config.relative_paths,
     ) {
         // Note that if we were invoked by git then cwd_of_delta_process == repo_root
         (Some(cwd_of_delta_process), _, false) => Some(cwd_of_delta_process.join(relative_path)),
@@ -25,7 +25,7 @@ pub fn absolute_path(relative_path: &str, config: &Config) -> Option<PathBuf> {
 
 /// Relativize path if delta config demands that and paths are not already relativized by git.
 pub fn relativize_path_maybe(path: &str, config: &Config) -> Option<PathBuf> {
-    if config.relative_paths && !calling_process().is_git_diff_relative() {
+    if config.relative_paths && !calling_process().paths_in_input_are_relative_to_cwd() {
         if let Some(base) = config.cwd_relative_to_repo_root.as_deref() {
             pathdiff::diff_paths(&path, base)
         } else {
