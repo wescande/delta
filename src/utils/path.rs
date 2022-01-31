@@ -4,6 +4,7 @@ use crate::config::Config;
 
 use super::process::calling_process;
 
+// Infer absolute path to `relative_path`.
 pub fn absolute_path(relative_path: &str, config: &Config) -> Option<PathBuf> {
     match (
         &config.cwd_of_delta_process,
