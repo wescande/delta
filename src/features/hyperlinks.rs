@@ -251,29 +251,28 @@ pub mod tests {
 
     #[test]
     fn test_paths_and_hyperlinks_git_grep() {
-        let calling_cmd = Some("git grep foo");
         let input_type = InputType::GitGrep;
         let true_location_of_file_relative_to_repo_root = PathBuf::from_iter(&["b", "a.txt"]);
 
         run_test(FilePathsTestCase {
             name: "git grep: b/a.txt from root dir",
+            input_type,
+            calling_cmd: Some("git grep foo"),
+            delta_relative_paths_option: false,
             true_location_of_file_relative_to_repo_root:
                 true_location_of_file_relative_to_repo_root.as_path(),
             git_prefix_env_var: Some(""),
-            delta_relative_paths_option: false,
-            input_type,
-            calling_cmd,
             path_in_delta_input: "b/a.txt",
             expected_displayed_path: "b/a.txt:",
         });
         run_test(FilePathsTestCase {
             name: "git grep: b/a.txt from b/ dir",
+            input_type,
+            calling_cmd: Some("git grep foo"),
+            delta_relative_paths_option: false,
             true_location_of_file_relative_to_repo_root:
                 true_location_of_file_relative_to_repo_root.as_path(),
             git_prefix_env_var: Some("b/"),
-            delta_relative_paths_option: false,
-            input_type,
-            calling_cmd,
             path_in_delta_input: "a.txt",
             expected_displayed_path: "a.txt:",
         })
