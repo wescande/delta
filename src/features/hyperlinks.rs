@@ -225,6 +225,17 @@ pub mod tests {
             path_in_delta_input: "b/a",
             expected_displayed_path: "b/a",
         });
+        run_test(FilePathsTestCase {
+            name: "b/a from c",
+            true_location_of_file_relative_to_repo_root:
+                true_location_of_file_relative_to_repo_root.as_path(),
+            git_prefix_env_var,
+            delta_relative_paths_option: false,
+            input_type,
+            calling_cmd: Some("git diff --relative"),
+            path_in_delta_input: "../b/a",
+            expected_displayed_path: "../b/a",
+        });
     }
 
     #[test]
@@ -341,18 +352,13 @@ __path__:  some matching line
                     .true_location_of_file_relative_to_repo_root
                     .to_string_lossy()
                     .to_string(),
-                CallingProcess::GitDiff(true) => {
-                    assert!(self
-                        .true_location_of_file_relative_to_repo_root
-                        .starts_with(self.git_prefix_env_var.unwrap()));
-                    pathdiff::diff_paths(
-                        self.true_location_of_file_relative_to_repo_root,
-                        self.git_prefix_env_var.unwrap(),
-                    )
-                    .unwrap()
-                    .to_string_lossy()
-                    .into()
-                }
+                CallingProcess::GitDiff(true) => pathdiff::diff_paths(
+                    self.true_location_of_file_relative_to_repo_root,
+                    self.git_prefix_env_var.unwrap(),
+                )
+                .unwrap()
+                .to_string_lossy()
+                .into(),
                 _ => panic!("Unexpected calling process: {:?}", self.calling_process()),
             }
         }
