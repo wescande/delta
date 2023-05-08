@@ -527,9 +527,12 @@ impl<'p> Painter<'p> {
             // as a whitespace error but delta does not yet.
             // https://git-scm.com/docs/git-config#Documentation/git-config.txt-corewhitespace
             let mut is_whitespace_error = whitespace_error_style.is_some();
+            let mut tab_found = false;
             for (style, s) in style_sections.iter_mut().rev() {
                 if is_whitespace_error && !s.trim().is_empty() {
                     is_whitespace_error = false;
+                } else if tab_found && !s.trim().is_empty() {
+                    tab_found = false;
                 }
                 // If the line as a whole constitutes a whitespace error then highlight this
                 // section if either (a) it is an emph section, or (b) the line lacks any
@@ -537,15 +540,20 @@ impl<'p> Painter<'p> {
 
                 // TODO: is this logic correct now, after introducing
                 // line_has_homolog for non_emph style?
-                if is_whitespace_error && (style.is_emph || !line_has_emph_and_non_emph_sections) {
+                if (is_whitespace_error || (tab_found && whitespace_error_style.is_some()))
+                    && (style.is_emph || !line_has_emph_and_non_emph_sections)
+                {
                     *style = whitespace_error_style.unwrap();
                 }
                 // Otherwise, update the style if this is a non-emph section that needs updating.
                 else if should_update_non_emph_styles && !style.is_emph {
                     *style = non_emph_style.unwrap();
-                    if is_whitespace_error {
+                    if is_whitespace_error || (tab_found && whitespace_error_style.is_some()) {
                         *style = whitespace_error_style.unwrap();
                     }
+                }
+                if s.starts_with("\t") {
+                    tab_found = true;
                 }
             }
         }
@@ -582,17 +590,11 @@ pub fn prepare_raw_line(raw_line: &str, prefix_length: usize, config: &config::C
 
 /// Expand tabs as spaces.
 /// tab_width = 0 is documented to mean do not replace tabs.
-pub fn expand_tabs<'a, I>(line: I, tab_width: usize) -> String
+pub fn expand_tabs<'a, I>(line: I, _: usize) -> String
 where
     I: Iterator<Item = &'a str>,
 {
-    if tab_width > 0 {
-        let tab_replacement = " ".repeat(tab_width);
-        line.map(|s| if s == "\t" { &tab_replacement } else { s })
-            .collect::<String>()
-    } else {
-        line.collect::<String>()
-    }
+    return line.collect::<String>();
 }
 
 pub fn paint_minus_and_plus_lines(
@@ -918,7 +920,7 @@ mod superimpose_style_sections {
         for ((syntax_style, char_1), (style, char_2)) in style_section_pairs {
             if *char_1 != char_2 {
                 panic!(
-                    "String mismatch encountered while superimposing style sections: '{}' vs '{}'",
+                    "String mismatch encountered while superimposing style sections: '{:?}' vs '{:?}'",
                     *char_1, char_2
                 )
             }

@@ -1444,6 +1444,31 @@ src/align.rs:71: impl<'a> Alignment<'a> { │
     }
 
     #[test]
+    fn test_tab_after_whitespace_error() {
+        let whitespace_error_style = "bold yellow red ul";
+        let config = integration_test_utils::make_config_from_args(&[
+            "--tabs=0",
+            "--whitespace-error-style",
+            whitespace_error_style,
+        ]);
+        let output =
+            integration_test_utils::run_delta(DIFF_WITH_TAB_AFTER_WHITESPACE_ERROR, &config);
+        ansi_test_utils::assert_line_has_style(&output, 8, " ", whitespace_error_style, &config);
+    }
+
+    #[test]
+    fn test_tab_after_whitespace_expand_error() {
+        let whitespace_error_style = "bold yellow red ul";
+        let config = integration_test_utils::make_config_from_args(&[
+            "--whitespace-error-style",
+            whitespace_error_style,
+        ]);
+        let output =
+            integration_test_utils::run_delta(DIFF_WITH_TAB_AFTER_WHITESPACE_ERROR, &config);
+        ansi_test_utils::assert_line_has_style(&output, 8, " ", whitespace_error_style, &config);
+    }
+
+    #[test]
     fn test_whitespace_error() {
         let whitespace_error_style = "bold yellow red ul";
         let config = integration_test_utils::make_config_from_args(&[
@@ -2424,6 +2449,16 @@ index 0000000..c6c830c
 +  private Long id;
 +  private String name;
 +}
+";
+
+    const DIFF_WITH_TAB_AFTER_WHITESPACE_ERROR: &str = r"
+diff --git c/a i/a
+new file mode 100644
+index 0000000..8d1c8b6
+--- /dev/null
++++ i/a
+@@ -0,0 +1 @@
++ 	foo
 ";
 
     const DIFF_WITH_WHITESPACE_ERROR: &str = r"

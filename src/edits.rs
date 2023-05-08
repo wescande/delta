@@ -90,14 +90,11 @@ where
     }
     // Emit any remaining plus lines
     for plus_line in &plus_lines[plus_index..] {
-        if let Some(content) = get_contents_before_trailing_whitespace(plus_line) {
-            annotated_plus_lines.push(vec![
-                (noop_insertions[plus_index], content),
-                (noop_insertions[plus_index], &plus_line[content.len()..]),
-            ]);
-        } else {
-            annotated_plus_lines.push(vec![(noop_insertions[plus_index], plus_line)]);
-        }
+        annotated_plus_lines.push(parse_lead_and_trailing_whitespace(
+            plus_line,
+            noop_insertions[plus_index],
+            noop_insertions[plus_index],
+        ));
         line_alignment.push((None, Some(plus_index)));
         plus_index += 1;
     }
@@ -107,13 +104,44 @@ where
 
 // Return `None` if there is no trailing whitespace.
 // Return `Some(content)` where content is trimmed if there was some trailing whitespace
-fn get_contents_before_trailing_whitespace(line: &str) -> Option<&str> {
-    let content = line.trim_end_matches(&[' ', '\t', '\n']);
-    if !content.is_empty() && content != line.trim_end_matches('\n') {
-        Some(content)
+fn get_leading_and_trailing_whitespace(line: &str) -> (Option<&str>, Option<&str>) {
+    let content = line.trim_start_matches(&[' ']);
+    let lead = if !content.is_empty() && content.len() != line.len() {
+        Some(&line[..line.len() - content.len()])
     } else {
         None
+    };
+    let content = line.trim_end_matches(&[' ', '\t', '\n']);
+    let trail = if !content.is_empty() && content.len() != line.len() {
+        Some(&line[content.len()..])
+    } else {
+        None
+    };
+    (lead, trail)
+}
+
+fn parse_lead_and_trailing_whitespace<EditOperation>(
+    mut line: &str,
+    content_operation: EditOperation,
+    whitespace_operation: EditOperation,
+) -> Vec<(EditOperation, &str)>
+where
+    EditOperation: Copy + PartialEq + std::fmt::Debug,
+{
+    let mut vec = Vec::new();
+    let (lead, trail) = get_leading_and_trailing_whitespace(line);
+    if let Some(l) = lead {
+        vec.push((whitespace_operation, l));
+        line = &line[l.len()..];
     }
+    // vec.push((content_operation, line[..trail.unwrap_or(line.len())]));
+    if let Some(t) = trail {
+        vec.push((content_operation, &line[..line.len() - t.len()]));
+        vec.push((whitespace_operation, t));
+    } else {
+        vec.push((content_operation, line));
+    }
+    vec
 }
 
 // Return boolean arrays indicating whether each line has a homolog (is "paired").
@@ -251,12 +279,12 @@ where
                 } else {
                     noop_insertion
                 };
-                let line = plus_section(n, &mut y_offset);
-                if let Some(non_whitespace) = get_contents_before_trailing_whitespace(line) {
-                    annotated_plus_line.push((op, non_whitespace));
-                    annotated_plus_line.push((plus_op_prev, &line[non_whitespace.len()..]));
-                } else {
-                    annotated_plus_line.push((op, line));
+                for token in parse_lead_and_trailing_whitespace(
+                    plus_section(n, &mut y_offset),
+                    op,
+                    plus_op_prev,
+                ) {
+                    annotated_plus_line.push(token);
                 }
                 minus_op_prev = noop_deletion;
                 plus_op_prev = noop_insertion;
@@ -514,7 +542,7 @@ mod tests {
 
     #[test]
     fn test_infer_edits_1_2() {
-        assert_paired_edits(
+        assert_edits(
             vec!["aaa ccc"],
             vec!["aba ccc"],
             (
@@ -523,8 +551,14 @@ mod tests {
                     (Deletion, "aaa"),
                     (MinusNoop, " ccc"),
                 ]],
-                vec![vec![(PlusNoop, ""), (Insertion, "aba"), (PlusNoop, " ccc")]],
+                vec![vec![
+                    (PlusNoop, ""),
+                    (Insertion, "aba"),
+                    (Insertion, " "),
+                    (PlusNoop, "ccc"),
+                ]],
             ),
+            1.0,
         )
     }
 
@@ -578,7 +612,8 @@ mod tests {
                     (PlusNoop, "á á b á á"),
                     (PlusNoop, " "),
                     (Insertion, "c"),
-                    (PlusNoop, " á á b"),
+                    (Insertion, " "),
+                    (PlusNoop, "á á b"),
                 ]],
             ),
             0.66,
@@ -601,14 +636,16 @@ mod tests {
                         (PlusNoop, "bbbb"),
                         (PlusNoop, " "),
                         (Insertion, "!"),
-                        (PlusNoop, " bbb"),
+                        (Insertion, " "),
+                        (PlusNoop, "bbb"),
                     ],
                     vec![(PlusNoop, "dddd d ddd")],
                     vec![
                         (PlusNoop, "cccc"),
                         (PlusNoop, " "),
                         (Insertion, "!"),
-                        (PlusNoop, " ccc"),
+                        (Insertion, " "),
+                        (PlusNoop, "ccc"),
                     ],
                 ],
             ),
@@ -631,9 +668,9 @@ mod tests {
                 "             i",
             ],
             vec![
-                "             s0.zip(s1)",
-                "                 .take_while(|((_, c0), (_, c1))| c0 == c1) // TODO: Don't consume one-past-the-end!",
-                "                 .fold(0, |offset, ((_, c0), (_, _))| offset + c0.len())"
+                "             ","s0.zip(s1)",
+                "                 ",".take_while(|((_, c0), (_, c1))| c0 == c1) // TODO: Don't consume one-past-the-end!",
+                "                 ",".fold(0, |offset, ((_, c0), (_, _))| offset + c0.len())"
             ], 0.5)
     }
 
@@ -734,7 +771,8 @@ mod tests {
                     (Insertion, "build"),
                     (Insertion, " "),
                     (Insertion, "info"),
-                    (PlusNoop, " from any one of them."),
+                    (Insertion, " "),
+                    (PlusNoop, "from any one of them."),
                 ]],
             ),
             1.0,
@@ -749,7 +787,8 @@ mod tests {
             (
                 vec![vec![(MinusNoop, "                 self.table[index] =")]],
                 vec![vec![
-                    (PlusNoop, "                 self.table[index] ="),
+                    (PlusNoop, "                 "),
+                    (PlusNoop, "self.table[index] ="),
                     (Insertion, " candidates"),
                 ]],
             ),
@@ -769,7 +808,8 @@ mod tests {
                     (MinusNoop, "\"),"),
                 ]],
                 vec![vec![
-                    (PlusNoop, "                     (xxxxxxxxx, \"build"),
+                    (PlusNoop, "                     "),
+                    (PlusNoop, "(xxxxxxxxx, \"build"),
                     (PlusNoop, "\"),"),
                 ]],
             ),
@@ -829,7 +869,8 @@ mod tests {
                         (Insertion, "x"),
                         (Insertion, " "),
                         (Insertion, "y"),
-                        (PlusNoop, " c"),
+                        (Insertion, " "),
+                        (PlusNoop, "c"),
                         (Insertion, " "),
                         (Insertion, "z"),
                         (PlusNoop, " "),
@@ -848,7 +889,7 @@ mod tests {
 
     #[test]
     fn test_infer_edits_15() {
-        assert_paired_edits(
+        assert_edits(
             vec![r#"printf "%s\n" s y y | git add -p &&"#],
             vec!["test_write_lines s y y | git add -p &&"],
             (
@@ -860,9 +901,11 @@ mod tests {
                 vec![vec![
                     (PlusNoop, ""),
                     (Insertion, "test_write_lines"),
-                    (PlusNoop, " s y y | git add -p &&"),
+                    (Insertion, " "),
+                    (PlusNoop, "s y y | git add -p &&"),
                 ]],
             ),
+            1.0,
         );
     }
 
